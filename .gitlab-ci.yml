@@ -1,0 +1,21 @@
+stages:
+  - test
+
+.use-golang-image: &use-golang
+  image: registry.gitlab.com/open_decorum/docker-golang:1.13-buster
+  before_script:
+    - go mod download
+
+lint:
+  <<: *use-golang
+  stage: test
+  services:
+  script:
+    - mage lint
+
+test:
+  <<: *use-golang
+  stage: test
+  services:
+  script:
+    - mage test
