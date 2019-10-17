@@ -45,14 +45,16 @@ func parseLine(line string) (r *Repo, err error) {
 		return nil, nil
 	}
 
-	split := strings.SplitN(line, " ", 2)
-	if len(split) < 2 {
+	fields := strings.Fields(line)
+	if len(fields) == 0 {
+		return nil, nil
+	} else if len(fields) != 2 {
 		return nil, errors.New("repos file needs to formatted: PATH REMOTE")
 	}
 
 	r = &Repo{
-		Path: split[0],
-		URL:  split[1],
+		Path: fields[0],
+		URL:  fields[1],
 	}
 
 	if strings.HasPrefix(r.Path, "~/") {
