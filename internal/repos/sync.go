@@ -10,10 +10,12 @@ import (
 // Sync takes a slice of git repositories and will do the equivalent of
 // `git fetch` for each.  If the local repository does not exist, the
 // equivalent `git clone` is performed.
-func Sync(repos []Repo) error {
+func Sync(repos []Repo) (err error) {
 	for _, r := range repos {
-		if _, err := os.Stat(r.Path); err == nil {
-			repo, err := git.PlainOpen(r.Path)
+		if _, err = os.Stat(r.Path); err == nil {
+			var repo *git.Repository
+
+			repo, err = git.PlainOpen(r.Path)
 			if err != nil {
 				log.Printf("error opening repo: %s: %v", r.Path, err)
 				continue
