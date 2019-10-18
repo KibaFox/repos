@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"os"
 	"strings"
 )
 
@@ -53,17 +52,8 @@ func parseLine(line string) (r *Repo, err error) {
 	}
 
 	r = &Repo{
-		Path: fields[0],
+		Path: ExpandHome(fields[0]),
 		URL:  fields[1],
-	}
-
-	if strings.HasPrefix(r.Path, "~/") {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return nil, fmt.Errorf("error getting user home directory: %w", err)
-		}
-
-		r.Path = home + r.Path[1:]
 	}
 
 	return r, nil
