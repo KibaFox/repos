@@ -72,10 +72,10 @@ var _ = Describe("Import", func() {
 
 		Expect(buf.String()).Should(
 			Equal(`~/git.fqdn/kiba/dotfiles git@gitlab.com/KibaFox/dotfiles
-~/git.fqdn/kiba/test git@example.tld/KibaFox/test
-~/git.fqdn/kiba/spike git@some.fqdn/KibaFox/spike
+~/git.fqdn/kiba/test     git@example.tld/KibaFox/test
+~/git.fqdn/kiba/spike    git@some.fqdn/KibaFox/spike
 ~/git.fqdn/kira/dotfiles git@github.com/KiraFox/dotfiles
-~/git.fqdn/kira/klok git@github.com/KiraFox/klok
+~/git.fqdn/kira/klok     git@github.com/KiraFox/klok
 `))
 
 		repos, err := Parse(bytes.NewReader(buf.Bytes()))

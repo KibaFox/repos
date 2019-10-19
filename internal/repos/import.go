@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"gopkg.in/src-d/go-git.v4"
 )
@@ -79,8 +80,20 @@ func FromPath(path string) (repos []Repo, err error) {
 
 // WriteRepos writes the given repos in a format compatible with the parser.
 func WriteRepos(repos []Repo, writer io.Writer) (err error) {
+	var max int
 	for _, repo := range repos {
-		str := fmt.Sprintf("%s %s\n", ContractHome(repo.Path), repo.URL)
+		if len(repo.Path) > max {
+			max = len(repo.Path)
+		}
+	}
+
+	for _, repo := range repos {
+		pad := max - len(repo.Path) + 1
+
+		str := fmt.Sprintf("%s%s%s\n",
+			ContractHome(repo.Path),
+			strings.Repeat(" ", pad),
+			repo.URL)
 
 		_, err = writer.Write([]byte(str))
 		if err != nil {
