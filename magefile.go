@@ -39,6 +39,11 @@ func Build() error {
 		"./cmd/repos")
 }
 
+// Install will install via `go install ./cmd/repos`
+func Install() error {
+	return run("go", "install", "./cmd/repos")
+}
+
 // Lint will perform style checks and static analysis on the Go code.
 func Lint() error {
 	return run("golangci-lint", "run")
