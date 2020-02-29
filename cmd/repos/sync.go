@@ -1,7 +1,9 @@
 package main
 
 import (
+	"context"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 
@@ -9,18 +11,18 @@ import (
 	"gitlab.com/KibaFox/repos/internal/repos"
 )
 
-func FetchCmd() cli.Command {
+func SyncCmd() cli.Command {
 	return cli.Command{
-		Name:    "fetch",
+		Name:    "sync",
 		Aliases: []string{},
-		Usage:   "fetch repos from a config",
+		Usage:   "sync repos from a config",
 		Action: func(c *cli.Context) error {
-			return Fetch(c.GlobalString("config"), c.Args().First())
+			return Sync(c.GlobalString("config"), c.Args().First())
 		},
 	}
 }
 
-func Fetch(cfg, name string) error {
+func Sync(cfg, name string) error {
 	path := filepath.Join(repos.ExpandHome(cfg), name+".repo")
 
 	file, err := os.Open(path)
@@ -29,12 +31,28 @@ func Fetch(cfg, name string) error {
 	}
 	defer file.Close()
 
-	r, err := repos.Parse(file)
+	errs := make(chan error, 1)
+
+	go func() {
+		for err := range errs {
+			log.Println(fmt.Errorf("parse: %w", err))
+		}
+	}()
+
+	r, err := repos.Parse(file, errs)
 	if err != nil {
 		return fmt.Errorf("sync: %w", err)
 	}
 
-	err = repos.Sync(r)
+	errs = make(chan error, 1)
+
+	go func() {
+		for err := range errs {
+			log.Println(fmt.Errorf("sync: %w", err))
+		}
+	}()
+
+	err = repos.Sync(context.TODO(), r, errs)
 	if err != nil {
 		return fmt.Errorf("sync: %w", err)
 	}

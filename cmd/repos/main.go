@@ -38,7 +38,7 @@ func main() {
 
 	app.Commands = []cli.Command{
 		ListCmd(),
-		FetchCmd(),
+		SyncCmd(),
 		ImportCmd(),
 	}
 

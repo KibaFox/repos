@@ -17,7 +17,7 @@ import (
 
 var _ = Describe("Import", func() {
 	It("walks directories and get collect repository paths and urls", func() {
-		dir := setupRepos()
+		dir := importSetupRepos()
 		defer cleanRepos(dir)
 
 		repos, err := FromPath(dir)
@@ -78,8 +78,7 @@ var _ = Describe("Import", func() {
 ~/git.fqdn/kira/klok     git@github.com/KiraFox/klok
 `))
 
-		repos, err := Parse(bytes.NewReader(buf.Bytes()))
-		Expect(err).ToNot(HaveOccurred())
+		repos := parseSimple(bytes.NewReader(buf.Bytes()))
 		Expect(repos).Should(ConsistOf(data))
 	})
 })
@@ -89,10 +88,10 @@ type testrepo struct {
 	url  string
 }
 
-func setupRepos() (dir string) {
+func importSetupRepos() (dir string) {
 	Expect(os.MkdirAll("testdata", 0755)).To(Succeed())
 
-	dir, err := ioutil.TempDir("testdata", "test_repos")
+	dir, err := ioutil.TempDir("testdata", "test_import_repos")
 	Expect(err).ToNot(HaveOccurred())
 
 	data := []testrepo{
