@@ -3,8 +3,6 @@ package main
 import (
 	"log"
 	"os"
-	"path/filepath"
-	"runtime"
 	"strings"
 
 	"github.com/urfave/cli"
@@ -23,16 +21,17 @@ func main() {
    repos uses configurations that define a list of repositories to in order to
    help you manage them.
 
-   Configuration files can either be hand crafted or imported with the "import"
-   subcommand.  Configuration file names must end in ".repo" to be used.
+   By default, configuration is read from Stdin.  You can specify a config file
+   to be used instead with the '--file' or '-f' flag.
 
+   Configurations can either be hand crafted or imported with the "import"
+   subcommand.
 	`)
 
 	app.Flags = []cli.Flag{
 		cli.StringFlag{
-			Name:  "config, c",
-			Usage: "configuration directory path",
-			Value: defaultConfig(),
+			Name:  "file, f",
+			Usage: "configuration file path",
 		},
 	}
 
@@ -46,14 +45,4 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-}
-
-func defaultConfig() (dir string) {
-	if runtime.GOOS == "windows" {
-		dir = filepath.Join(os.Getenv("APPDATA"), "repos")
-	} else {
-		dir = "~/.config/repos"
-	}
-
-	return dir
 }
