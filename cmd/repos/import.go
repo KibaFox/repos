@@ -6,79 +6,87 @@ import (
 	"os"
 	"strings"
 
-	"github.com/urfave/cli"
+	"github.com/spf13/cobra"
 	"gitlab.com/KibaFox/repos/internal/repos"
 )
 
-func ImportCmd() cli.Command {
-	return cli.Command{
-		Name:    "import",
-		Aliases: []string{},
-		Usage:   "searches paths for existing repos to create a config",
-		Description: strings.TrimSpace(`
-   import will take each argument as a directory path and searches them for git
-   repositories to produce one configuration file that can be used with the
-   other subcommands.
+var ImportOut string // nolint: gochecknoglobals
 
-   Repositories are detected when a path contains a directory named ".git".  The
-   parent directory is then opened as a git repository to read the git config.
-   The first URL for the remote named "origin" is used for the import.
-			`),
-		Flags: []cli.Flag{
-			cli.StringFlag{
-				Name:  "output, o",
-				Usage: "destination file for the import (default: stdout)",
-			},
-		},
-		Action: func(c *cli.Context) error {
-			return Import(c.String("output"), c.Args()...)
-		},
-	}
+func init() { // nolint: gochecknoinits
+	rootCmd.AddCommand(importCmd)
+	importCmd.Flags().StringVarP(&ImportOut, "out", "o", "",
+		"destination file for the import (default: stdout)")
 }
 
-func Import(out string, paths ...string) (err error) {
-	var output io.Writer
+var importCmd = &cobra.Command{ // nolint: gochecknoglobals
+	Use:   "import [flags] directory ...",
+	Short: "searches paths for existing repos to create a config",
+	Long: strings.TrimSpace(`
+import searches through directories for repositiories to create a configuration
+that can be used for other commands.
 
-	if out == "" {
-		output = os.Stdout
-	} else {
-		var file *os.File
-		file, err = os.OpenFile(
-			repos.ExpandHome(out), os.O_CREATE|os.O_WRONLY, 0644)
-		if err != nil {
-			return fmt.Errorf("import: failed to open file to write: %w", err)
-		}
+One or more directories can be given as arguments.  Each directory given is
+traversed recursively until a git repository is found.
 
-		defer file.Close()
+Repositories are detected when a path contains a directory named ".git".  The
+path found will become the PATH part of the config entry.  The git repository is
+inspected and the first remote named "origin" is used for the URL part of the
+config entry.
 
-		output = file
-	}
+By default, the configuration is written to standard output (stdout).  You can
+write to a file with the -o/--out flag.
+`),
+	Args: cobra.MinimumNArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		var output io.Writer
 
-	for i, path := range paths {
-		r, err := repos.FromPath(path)
-		if err != nil {
-			return fmt.Errorf("import: %w", err)
-		}
-
-		_, err = output.Write(
-			[]byte(fmt.Sprintf("# Imported Repositories from: %s\n\n", path)))
-		if err != nil {
-			return fmt.Errorf("import: failed to write comment: %w", err)
-		}
-
-		err = repos.WriteRepos(r, output)
-		if err != nil {
-			return fmt.Errorf("import: %w", err)
-		}
-
-		if i < len(paths)-1 {
-			_, err = output.Write([]byte{'\n'})
+		if ImportOut == "" {
+			output = os.Stdout
+		} else {
+			var (
+				file *os.File
+				err  error
+			)
+			file, err = os.OpenFile(
+				repos.ExpandHome(ImportOut), os.O_CREATE|os.O_WRONLY, 0644)
 			if err != nil {
 				return fmt.Errorf(
-					"import: failed to write last newline: %w", err)
+					"import: failed to open file to write: %w", err)
+			}
+
+			defer file.Close()
+
+			output = file
+		}
+
+		paths := args
+		for i, path := range paths {
+			r, err := repos.FromPath(path)
+			if err != nil {
+				return fmt.Errorf("import: %w", err)
+			}
+
+			_, err = output.Write(
+				[]byte(fmt.Sprintf(
+					"# Imported Repositories from: %s\n\n", path)))
+			if err != nil {
+				return fmt.Errorf("import: failed to write comment: %w", err)
+			}
+
+			err = repos.WriteRepos(r, output)
+			if err != nil {
+				return fmt.Errorf("import: %w", err)
+			}
+
+			if i < len(paths)-1 {
+				_, err = output.Write([]byte{'\n'})
+				if err != nil {
+					return fmt.Errorf(
+						"import: failed to write last newline: %w", err)
+				}
 			}
 		}
-	}
 
-	return nil
+		return nil
+	},
 }
