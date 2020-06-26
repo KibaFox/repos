@@ -1,13 +1,16 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"strings"
 
 	"github.com/spf13/cobra"
-	"gitlab.com/KibaFox/repos/internal/repos"
+	"gitlab.com/kibafox/repos/internal/errs"
+	"gitlab.com/kibafox/repos/internal/repos"
 )
 
 var ImportOut string // nolint: gochecknoglobals
@@ -43,12 +46,16 @@ write to a file with the -o/--out flag.
 		if ImportOut == "" {
 			output = os.Stdout
 		} else {
-			var (
-				file *os.File
-				err  error
+			home, err := os.UserHomeDir()
+			if err != nil {
+				return errs.ErrHomeNotFound(err)
+			}
+
+			file, err := os.OpenFile(
+				repos.ExpandHome(home, ImportOut),
+				os.O_CREATE|os.O_WRONLY,
+				0644,
 			)
-			file, err = os.OpenFile(
-				repos.ExpandHome(ImportOut), os.O_CREATE|os.O_WRONLY, 0644)
 			if err != nil {
 				return fmt.Errorf(
 					"import: failed to open file to write: %w", err)
@@ -61,28 +68,36 @@ write to a file with the -o/--out flag.
 
 		paths := args
 		for i, path := range paths {
-			r, err := repos.FromPath(path)
-			if err != nil {
-				return fmt.Errorf("import: %w", err)
+
+			errs := make(chan error, 1)
+
+			go func() {
+				for err := range errs {
+					log.Println(fmt.Errorf("import: %w", err))
+				}
+			}()
+
+			r, rErr := repos.FromPath(context.TODO(), path, errs)
+			if rErr != nil {
+				return fmt.Errorf("import: %w", rErr)
 			}
 
-			_, err = output.Write(
+			_, iErr := output.Write(
 				[]byte(fmt.Sprintf(
 					"# Imported Repositories from: %s\n\n", path)))
-			if err != nil {
-				return fmt.Errorf("import: failed to write comment: %w", err)
+			if iErr != nil {
+				return fmt.Errorf("import: failed to write comment: %w", iErr)
 			}
 
-			err = repos.WriteRepos(r, output)
-			if err != nil {
-				return fmt.Errorf("import: %w", err)
+			if wErr := repos.WriteRepos(r, output); wErr != nil {
+				return fmt.Errorf("import: %w", wErr)
 			}
 
 			if i < len(paths)-1 {
-				_, err = output.Write([]byte{'\n'})
-				if err != nil {
+				_, nlErr := output.Write([]byte{'\n'})
+				if nlErr != nil {
 					return fmt.Errorf(
-						"import: failed to write last newline: %w", err)
+						"import: failed to write last newline: %w", nlErr)
 				}
 			}
 		}

@@ -11,7 +11,8 @@ import (
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 
-	. "gitlab.com/KibaFox/repos/internal/repos"
+	"gitlab.com/kibafox/repos/internal/errs"
+	. "gitlab.com/kibafox/repos/internal/repos"
 )
 
 var _ = Describe("Parse", func() {
@@ -112,7 +113,7 @@ var _ = Describe("Parse", func() {
 	It("Skips when missing a URL", func() {
 		config := "/home/user/proj/test"
 
-		repos := parseErr(strings.NewReader(config), ErrParseLine)
+		repos := parseErr(strings.NewReader(config), errs.ErrParseLine)
 
 		Expect(repos).Should(HaveLen(0))
 	})
@@ -120,7 +121,7 @@ var _ = Describe("Parse", func() {
 	It("Skips when more fields than PATH and URL are given", func() {
 		config := "/home/user/proj/test git@gitlab.com/user/test git@github.com"
 
-		repos := parseErr(strings.NewReader(config), ErrParseLine)
+		repos := parseErr(strings.NewReader(config), errs.ErrParseLine)
 
 		Expect(repos).Should(HaveLen(0))
 	})

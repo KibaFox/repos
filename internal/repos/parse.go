@@ -2,25 +2,34 @@ package repos
 
 import (
 	"bufio"
-	"errors"
 	"fmt"
 	"io"
+	"os"
 	"strings"
-)
 
-var (
-	ErrParseLine = errors.New("needs to formatted: PATH REMOTE")
+	"gitlab.com/kibafox/repos/internal/errs"
 )
 
 // Parse will read the configuration file format and returns the parsed slice of
 // git repositories.
-func Parse(reader io.Reader, errs chan error) (repos []Repo, err error) {
+func Parse(reader io.Reader, errCh chan error) ([]Repo, error) {
+	repos := make([]Repo, 0, 9)
+
+	if errCh == nil {
+		return repos, errs.ErrNilChan
+	}
+
+	defer close(errCh)
+
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return nil, errs.ErrHomeNotFound(err)
+	}
+
 	var (
 		linenum     uint
 		errOccurred bool
 	)
-
-	repos = make([]Repo, 0, 9)
 
 	scanner := bufio.NewScanner(reader)
 	for scanner.Scan() {
@@ -28,10 +37,10 @@ func Parse(reader io.Reader, errs chan error) (repos []Repo, err error) {
 
 		str := scanner.Text()
 
-		r, err := parseLine(str)
+		r, err := parseLine(home, str)
 		if err != nil {
 			errOccurred = true
-			errs <- fmt.Errorf("error on line %d: %w", linenum, err)
+			errCh <- fmt.Errorf("error on line %d: %w", linenum, err)
 
 			continue
 		}
@@ -47,16 +56,14 @@ func Parse(reader io.Reader, errs chan error) (repos []Repo, err error) {
 		return nil, fmt.Errorf("error scanning repos file: %w", err)
 	}
 
-	close(errs)
-
 	if errOccurred {
-		return repos, errors.New("error(s) occurred")
+		return repos, errs.ErrOccurred
 	}
 
 	return repos, nil
 }
 
-func parseLine(line string) (r *Repo, err error) {
+func parseLine(home, line string) (r *Repo, err error) {
 	if strings.HasPrefix(line, "#") || len(line) == 0 {
 		// ignore comments and empty lines
 		return nil, nil
@@ -66,11 +73,11 @@ func parseLine(line string) (r *Repo, err error) {
 	if len(fields) == 0 {
 		return nil, nil
 	} else if len(fields) != 2 {
-		return nil, ErrParseLine
+		return nil, errs.ErrParseLine
 	}
 
 	r = &Repo{
-		Path: ExpandHome(fields[0]),
+		Path: ExpandHome(home, fields[0]),
 		URL:  fields[1],
 	}
 

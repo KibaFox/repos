@@ -3,16 +3,19 @@ package repos_test
 import (
 	"bufio"
 	"bytes"
+	"context"
+	"fmt"
 	"io/ioutil"
+	"log"
 	"os"
 	"path"
+	"time"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
-	"gopkg.in/src-d/go-git.v4"
-	"gopkg.in/src-d/go-git.v4/config"
 
-	. "gitlab.com/KibaFox/repos/internal/repos"
+	"gitlab.com/kibafox/repos/internal/git"
+	. "gitlab.com/kibafox/repos/internal/repos"
 )
 
 var _ = Describe("Import", func() {
@@ -20,8 +23,7 @@ var _ = Describe("Import", func() {
 		dir := importSetupRepos()
 		defer cleanRepos(dir)
 
-		repos, err := FromPath(dir)
-		Expect(err).ShouldNot(HaveOccurred())
+		repos := fromPathSimple(dir)
 
 		Expect(repos).Should(ConsistOf(
 			Repo{
@@ -36,6 +38,14 @@ var _ = Describe("Import", func() {
 				Path: path.Join(dir, "git.fqdn", "kira", "klok"),
 				URL:  "git@github.com/KiraFox/klok",
 			},
+			Repo{
+				Path: path.Join(dir, "git.fqdn", "kiba", "test"),
+				URL:  "",
+			},
+			Repo{
+				Path: path.Join(dir, "git.fqdn", "kiba", "spike"),
+				URL:  "",
+			},
 		))
 	})
 
@@ -49,11 +59,11 @@ var _ = Describe("Import", func() {
 			},
 			{
 				Path: path.Join(h, "git.fqdn", "kiba", "test"),
-				URL:  "git@example.tld/KibaFox/test",
+				URL:  "",
 			},
 			{
 				Path: path.Join(h, "git.fqdn", "kiba", "spike"),
-				URL:  "git@some.fqdn/KibaFox/spike",
+				URL:  "",
 			},
 			{
 				Path: path.Join(h, "git.fqdn", "kira", "dotfiles"),
@@ -72,14 +82,27 @@ var _ = Describe("Import", func() {
 
 		Expect(buf.String()).Should(
 			Equal(`~/git.fqdn/kiba/dotfiles git@gitlab.com/KibaFox/dotfiles
-~/git.fqdn/kiba/test     git@example.tld/KibaFox/test
-~/git.fqdn/kiba/spike    git@some.fqdn/KibaFox/spike
+# Could not find remote origin for local repository: ~/git.fqdn/kiba/test
+# Could not find remote origin for local repository: ~/git.fqdn/kiba/spike
 ~/git.fqdn/kira/dotfiles git@github.com/KiraFox/dotfiles
 ~/git.fqdn/kira/klok     git@github.com/KiraFox/klok
 `))
 
 		repos := parseSimple(bytes.NewReader(buf.Bytes()))
-		Expect(repos).Should(ConsistOf(data))
+		Expect(repos).Should(ConsistOf(
+			Repo{
+				Path: path.Join(h, "git.fqdn", "kiba", "dotfiles"),
+				URL:  "git@gitlab.com/KibaFox/dotfiles",
+			},
+			Repo{
+				Path: path.Join(h, "git.fqdn", "kira", "dotfiles"),
+				URL:  "git@github.com/KiraFox/dotfiles",
+			},
+			Repo{
+				Path: path.Join(h, "git.fqdn", "kira", "klok"),
+				URL:  "git@github.com/KiraFox/klok",
+			},
+		))
 	})
 })
 
@@ -117,17 +140,16 @@ func importSetupRepos() (dir string) {
 		},
 	}
 
+	ctx := context.Background()
+
 	for _, d := range data {
 		Expect(os.MkdirAll(d.path, 0755)).To(Succeed())
 
-		repo, err := git.PlainInit(d.path, false)
-		Expect(err).ToNot(HaveOccurred())
+		Expect(git.Run(ctx, "-C", d.path, "init")).To(Succeed())
 
 		if len(d.url) > 0 {
-			_, err = repo.CreateRemote(&config.RemoteConfig{
-				Name: "origin",
-				URLs: []string{d.url},
-			})
+			Expect(git.Run(ctx, "-C", d.path,
+				"remote", "add", "origin", d.url)).To(Succeed())
 		}
 
 		Expect(err).ToNot(HaveOccurred())
@@ -145,4 +167,32 @@ func home() string {
 	Expect(err).ToNot(HaveOccurred())
 
 	return home
+}
+
+// fromPathSimple will do a simple import; expects it to complete successfully.
+func fromPathSimple(path string) []Repo {
+	var (
+		repos       []Repo
+		err         error
+		errs        = make(chan error, 1)
+		ctx, cancel = context.WithTimeout(context.Background(), 3*time.Second)
+	)
+
+	defer cancel()
+
+	go func() {
+		for err := range errs {
+			log.Println(fmt.Errorf("import: %w", err))
+		}
+	}()
+
+	go func() {
+		repos, err = FromPath(ctx, path, errs)
+	}()
+
+	Consistently(errs).ShouldNot(Receive())
+	Expect(err).ShouldNot(HaveOccurred())
+	Expect(ctx.Err()).ToNot(HaveOccurred())
+
+	return repos
 }

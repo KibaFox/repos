@@ -1,85 +1,90 @@
 package repos
 
 import (
+	"context"
 	"fmt"
 	"io"
-	"log"
 	"os"
 	"path/filepath"
 	"strings"
 
-	"gopkg.in/src-d/go-git.v4"
+	"gitlab.com/kibafox/repos/internal/errs"
+	"gitlab.com/kibafox/repos/internal/git"
 )
 
 // FromPath will search a path for git repositories.  It builds a slice of repos
 // from the paths and using the first URL for the `origin` remote configured.
-func FromPath(path string) (repos []Repo, err error) {
-	path = ExpandHome(path)
-	repos = make([]Repo, 0, 9)
+func FromPath(
+	ctx context.Context,
+	path string,
+	errCh chan error,
+) ([]Repo, error) {
+	if errCh == nil {
+		return nil, errs.ErrNilChan
+	}
 
-	err = filepath.Walk(path,
-		func(path string, info os.FileInfo, err error) error {
-			if err != nil {
-				err = fmt.Errorf("error visiting path: %s: %w", path, err)
-				log.Println(err)
+	defer close(errCh)
 
-				return err
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return nil, errs.ErrHomeNotFound(err)
+	}
+
+	exPath := ExpandHome(home, path)
+	repos := make([]Repo, 0, 9)
+
+	var errOccurred bool
+
+	if err := filepath.Walk(exPath,
+		func(p string, info os.FileInfo, e error) error {
+			if ctx.Err() != nil {
+				switch ctx.Err() {
+				case context.Canceled:
+					return errs.ErrContextCanceled
+				case context.DeadlineExceeded:
+					return errs.ErrContextTimeout
+				default:
+					return fmt.Errorf("context error: %w", ctx.Err())
+				}
+			}
+
+			if e != nil {
+				errOccurred = true
+				errCh <- fmt.Errorf("error visiting path: %s: %w", p, e)
+				return filepath.SkipDir
 			}
 
 			if info.IsDir() && info.Name() == ".git" {
-				p := filepath.Dir(path)
+				r := filepath.Dir(p)
 
-				repo, err := git.PlainOpen(p)
-				if err != nil {
-					err = fmt.Errorf("error opening repo at: %s: %w", path, err)
-					log.Println(err)
-					return nil
-				}
+				// Ignore errors here.  An empty string means we could not find
+				// the remote origin.
+				remote, _ := git.Origin(ctx, r)
 
-				cfg, err := repo.Config()
-				if err != nil {
-					err = fmt.Errorf(
-						"error opening git config at: %s: %w", path, err)
-					log.Println(err)
-					return nil
-				}
-
-				origin, ok := cfg.Remotes["origin"]
-				if !ok {
-					err = fmt.Errorf(
-						"repo %s does not have remote: origin", path)
-					log.Println(err)
-					return nil
-				}
-
-				if len(origin.URLs) < 1 {
-					err = fmt.Errorf(
-						"repo %s has no URL for remote: origin", path)
-					log.Println(err)
-					return nil
-				}
-
-				r := &Repo{
-					Path: p,
-					URL:  origin.URLs[0],
-				}
-
-				repos = append(repos, *r)
+				repos = append(repos, Repo{Path: r, URL: remote})
 
 				return filepath.SkipDir
 			}
 
 			return nil
-		})
-	if err != nil {
+		}); err != nil {
 		return repos, fmt.Errorf("error walking path %s: %w", path, err)
+	}
+
+	if errOccurred {
+		return repos, errs.ErrOccurred
 	}
 
 	return repos, nil
 }
 
 // WriteRepos writes the given repos in a format compatible with the parser.
-func WriteRepos(repos []Repo, writer io.Writer) (err error) {
+func WriteRepos(repos []Repo, writer io.Writer) error {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return errs.ErrHomeNotFound(err)
+	}
+
 	var max int
 	for _, repo := range repos {
 		if len(repo.Path) > max {
@@ -90,12 +95,19 @@ func WriteRepos(repos []Repo, writer io.Writer) (err error) {
 	for _, repo := range repos {
 		pad := max - len(repo.Path) + 1
 
-		str := fmt.Sprintf("%s%s%s\n",
-			ContractHome(repo.Path),
-			strings.Repeat(" ", pad),
-			repo.URL)
+		var str string
+		if repo.URL == "" {
+			str = fmt.Sprintf(
+				"# Could not find remote origin for local repository: %s\n",
+				ContractHome(home, repo.Path))
+		} else {
+			str = fmt.Sprintf("%s%s%s\n",
+				ContractHome(home, repo.Path),
+				strings.Repeat(" ", pad),
+				repo.URL)
+		}
 
-		_, err = writer.Write([]byte(str))
+		_, err := writer.Write([]byte(str))
 		if err != nil {
 			return fmt.Errorf("error writing repo: %s: %w", repo.Path, err)
 		}
