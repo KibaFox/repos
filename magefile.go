@@ -14,12 +14,12 @@ import (
 )
 
 // Clean removes the dist/ and out/ directory.
-func Clean() (err error) {
-	if err = os.RemoveAll("dist"); err != nil {
+func Clean() error {
+	if err := os.RemoveAll("dist"); err != nil {
 		return err
 	}
 
-	if err = os.RemoveAll("out"); err != nil {
+	if err := os.RemoveAll("out"); err != nil {
 		return err
 	}
 

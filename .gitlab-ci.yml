@@ -30,4 +30,6 @@ test:
   stage: test
   services:
   script:
+    - git config --global user.email "jane.mc.hacker@notld"
+    - git config --global user.name "Jane McHacker"
     - mage test

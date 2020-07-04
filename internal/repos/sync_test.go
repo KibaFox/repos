@@ -12,28 +12,20 @@ import (
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
-	"gopkg.in/src-d/go-git.v4"
-	"gopkg.in/src-d/go-git.v4/plumbing"
-	"gopkg.in/src-d/go-git.v4/plumbing/object"
 
-	. "gitlab.com/KibaFox/repos/internal/repos"
+	"gitlab.com/kibafox/repos/internal/errs"
+	"gitlab.com/kibafox/repos/internal/git"
+	. "gitlab.com/kibafox/repos/internal/repos"
 )
 
 var _ = Describe("Sync", func() {
 	var (
-		repos  []Repo
-		dir    string
-		asJeff *git.CommitOptions
+		repos []Repo
+		dir   string
 	)
 
 	BeforeEach(func() {
-		asJeff = &git.CommitOptions{
-			Author: &object.Signature{
-				Name:  "Jeff McTester",
-				Email: "jeff.mc.tester@notld",
-			},
-		}
-		repos, dir = syncSetupRepos(asJeff)
+		repos, dir = syncSetupRepos()
 		log.Println(dir)
 	})
 
@@ -54,14 +46,15 @@ var _ = Describe("Sync", func() {
 		syncSimple(repos)
 
 		By("Committing a CONTRIBUTING.md file to the remote repos")
-		expectedHeads := make(map[string]plumbing.Hash)
+		expectedHeads := make(map[string]string)
 		for _, r := range repos {
-			expectedHeads[r.Path] = makeCommit(
+			makeCommit(
 				r.URL,
 				"CONTRIBUTING.md",
 				"# Contributing\n\nTODO\n",
-				"Add CONTRIBUTING.md",
-				asJeff)
+				"Add CONTRIBUTING.md")
+
+			expectedHeads[r.Path] = repoHeadHash(r.URL)
 		}
 
 		syncSimple(repos)
@@ -88,53 +81,55 @@ var _ = Describe("Sync", func() {
 		syncSimple(repos)
 
 		By("Committing a CONTRIBUTING.md file to the remote repos")
-		remoteHeads := make(map[string]plumbing.Hash)
+		remoteHeads := make(map[string]string)
 		for _, r := range repos {
-			remoteHeads[r.Path] = makeCommit(
+			makeCommit(
 				r.URL,
 				"CONTRIBUTING.md",
 				"# Contributing\n\nTODO\n",
-				"Add CONTRIBUTING.md",
-				asJeff)
+				"Add CONTRIBUTING.md")
+			remoteHeads[r.Path] = repoHeadHash(r.URL)
 		}
 
 		By("Committing a TODO file to the local repos")
-		localHeads := make(map[string]plumbing.Hash)
+		localHeads := make(map[string]string)
 		for _, r := range repos {
-			localHeads[r.Path] = makeCommit(
+			makeCommit(
 				r.Path,
 				"TODO",
 				"- write code\n- ???\n- profit\n",
-				"Add TODO",
-				asJeff)
+				"Add TODO")
+
+			localHeads[r.Path] = repoHeadHash(r.Path)
 		}
 
-		syncErr(repos, ErrNonFastForwardUpdate)
+		syncErr(repos, errs.ErrGit)
 		after := localHeadHashes(repos)
 
 		Expect(remoteHeads).ShouldNot(Equal(localHeads))
 		Expect(localHeads).Should(Equal(after))
 
 		By("Ensuring we fetched the remote commit")
+		ctx := context.Background()
 		for path, head := range remoteHeads {
-			_, err := repoOpen(path).Object(plumbing.CommitObject, head)
-			Expect(err).ToNot(HaveOccurred())
+			Expect(git.Run(ctx, "-C", path, "rev-parse", head)).To(Succeed())
 		}
 	})
 
-	It("fetches when the local directory is dirty", func() {
+	It("fetches when local has unstaged changes", func() {
 		syncSimple(repos)
 		before := localHeadHashes(repos)
 
 		By("Committing an update to the README.md file to the remote repos")
-		remoteHeads := make(map[string]plumbing.Hash)
+		remoteHeads := make(map[string]string)
 		for _, r := range repos {
-			remoteHeads[r.Path] = makeCommit(
+			makeCommit(
 				r.URL,
 				"README.md",
 				"# Readme\n\ntest 123\n",
-				"Update README.md",
-				asJeff)
+				"Update README.md")
+
+			remoteHeads[r.Path] = repoHeadHash(r.URL)
 		}
 
 		By("Modifying the README.md the local working directory")
@@ -144,7 +139,7 @@ var _ = Describe("Sync", func() {
 			Expect(ioutil.WriteFile(path, []byte(content), 0600)).To(Succeed())
 		}
 
-		syncSimple(repos)
+		syncErr(repos, errs.ErrGit)
 
 		By("Verifying we only fetched since there were changes in the worktree")
 		after := localHeadHashes(repos)
@@ -152,37 +147,39 @@ var _ = Describe("Sync", func() {
 		Expect(before).Should(Equal(after))
 
 		By("Ensuring we fetched to remote commit")
+		ctx := context.Background()
 		for path, head := range remoteHeads {
-			_, err := repoOpen(path).Object(plumbing.CommitObject, head)
-			Expect(err).ToNot(HaveOccurred())
+			Expect(git.Run(ctx, "-C", path, "rev-parse", head)).To(Succeed())
 		}
 	})
 
-	It("pulls when there are staged items in the local directory", func() {
+	It("fetches when there are items staged for commit", func() {
 		syncSimple(repos)
 		before := localHeadHashes(repos)
 
 		By("Committing an update to the README.md file to the remote repos")
-		remoteHeads := make(map[string]plumbing.Hash)
+		remoteHeads := make(map[string]string)
 		for _, r := range repos {
-			remoteHeads[r.Path] = makeCommit(
+			makeCommit(
 				r.URL,
 				"README.md",
 				"# Readme\n\ntest 123\n",
-				"Update README.md",
-				asJeff)
+				"Update README.md")
+			remoteHeads[r.Path] = repoHeadHash(r.URL)
 		}
 
 		By("Staging a change to the README.md in the local working directory")
 		content := "- write code\n- ???\n- profit\n"
+
+		ctx := context.Background()
+
 		for _, r := range repos {
 			path := path.Join(r.Path, "README.md")
 			Expect(ioutil.WriteFile(path, []byte(content), 0600)).To(Succeed())
-			_, err := repoWrk(repoOpen(r.Path)).Add("README.md")
-			Expect(err).ToNot(HaveOccurred())
+			Expect(git.Run(ctx, "-C", r.Path, "add", "README.md")).To(Succeed())
 		}
 
-		syncSimple(repos)
+		syncErr(repos, errs.ErrGit)
 
 		By("Verifying we still pulled since there were no conflicts")
 		after := localHeadHashes(repos)
@@ -191,8 +188,7 @@ var _ = Describe("Sync", func() {
 
 		By("Ensuring we fetched to remote commit")
 		for path, head := range remoteHeads {
-			_, err := repoOpen(path).Object(plumbing.CommitObject, head)
-			Expect(err).ToNot(HaveOccurred())
+			Expect(git.Run(ctx, "-C", path, "rev-parse", head)).To(Succeed())
 		}
 	})
 })
@@ -245,6 +241,8 @@ func syncErr(repos []Repo, err error) {
 	Expect(ctx.Err()).ToNot(HaveOccurred())
 }
 
+const author = "Jane McHacker <jane.mc.hacker@notld>"
+
 // syncSetupRepos will setup a test directory with the following repos:
 //
 //     .../remote/kiba
@@ -257,7 +255,7 @@ func syncErr(repos []Repo, err error) {
 //     .../kira/local
 //
 // The local repos will not be synced.
-func syncSetupRepos(opt *git.CommitOptions) (repos []Repo, dir string) {
+func syncSetupRepos() (repos []Repo, dir string) {
 	Expect(os.MkdirAll("testdata", 0755)).To(Succeed())
 
 	dir, err := ioutil.TempDir("testdata", "test_sync_repos")
@@ -276,55 +274,39 @@ func syncSetupRepos(opt *git.CommitOptions) (repos []Repo, dir string) {
 
 	content := []byte("# README\n\nTODO\n")
 
+	ctx := context.Background()
+
 	for _, r := range repos {
 		Expect(os.MkdirAll(r.URL, 0755)).To(Succeed())
 
-		repo, err := git.PlainInit(r.URL, false)
-		Expect(err).ToNot(HaveOccurred())
-
-		wrk := repoWrk(repo)
+		Expect(git.Run(ctx, "-C", r.URL, "init")).To(Succeed())
 
 		readme := path.Join(r.URL, "README.md")
 		Expect(ioutil.WriteFile(readme, content, 0600)).To(Succeed())
 
-		_, err = wrk.Add("README.md")
-		Expect(err).ToNot(HaveOccurred())
+		Expect(git.Run(ctx, "-C", r.URL, "add", "README.md")).To(Succeed())
 
-		_, err = wrk.Commit("Add README.md", opt)
-		Expect(err).ToNot(HaveOccurred())
+		Expect(git.Run(ctx, "-C", r.URL, "commit", "-m", "Add README.md",
+			"--author", author)).To(Succeed())
 	}
 
 	return repos, dir
 }
 
-func repoOpen(path string) (repo *git.Repository) {
-	var err error
-	repo, err = git.PlainOpen(path)
+func repoHeadHash(path string) string {
+	ctx := context.Background()
+
+	hash, err := git.Out(ctx, "-C", path, "rev-parse", "HEAD")
 	Expect(err).ToNot(HaveOccurred())
 
-	return repo
+	return hash
 }
 
-func repoWrk(repo *git.Repository) (wrk *git.Worktree) {
-	var err error
-	wrk, err = repo.Worktree()
-	Expect(err).ToNot(HaveOccurred())
-
-	return wrk
-}
-
-func repoHeadHash(repo *git.Repository) (hash plumbing.Hash) {
-	head, err := repo.Head()
-	Expect(err).ToNot(HaveOccurred())
-
-	return head.Hash()
-}
-
-func localHeadHashes(repos []Repo) (heads map[string]plumbing.Hash) {
-	heads = make(map[string]plumbing.Hash)
+func localHeadHashes(repos []Repo) (heads map[string]string) {
+	heads = make(map[string]string)
 
 	for _, r := range repos {
-		heads[r.Path] = repoHeadHash(repoOpen(r.Path))
+		heads[r.Path] = repoHeadHash(r.Path)
 	}
 
 	Expect(heads).Should(HaveLen(len(repos)))
@@ -332,22 +314,14 @@ func localHeadHashes(repos []Repo) (heads map[string]plumbing.Hash) {
 	return heads
 }
 
-func makeCommit(
-	repoPath, file, content, msg string, opt *git.CommitOptions,
-) (hash plumbing.Hash) {
-	var err error
-
-	repo := repoOpen(repoPath)
-	wrk := repoWrk(repo)
+func makeCommit(repoPath, file, content, msg string) {
+	ctx := context.Background()
 
 	path := path.Join(repoPath, file)
 	Expect(ioutil.WriteFile(path, []byte(content), 0600)).To(Succeed())
 
-	_, err = wrk.Add(file)
-	Expect(err).ToNot(HaveOccurred())
+	Expect(git.Run(ctx, "-C", repoPath, "add", file)).To(Succeed())
 
-	hash, err = wrk.Commit(msg, opt)
-	Expect(err).ToNot(HaveOccurred())
-
-	return hash
+	Expect(git.Run(ctx, "-C", repoPath,
+		"commit", "-m", msg, "--author", author)).To(Succeed())
 }

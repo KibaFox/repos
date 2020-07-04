@@ -9,7 +9,7 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
-	"gitlab.com/KibaFox/repos/internal/repos"
+	"gitlab.com/kibafox/repos/internal/repos"
 )
 
 var SyncFile string // nolint: gochecknoglobals
@@ -55,29 +55,28 @@ from a file with the -f/--file flag.
 			input = f
 		}
 
-		errs := make(chan error, 1)
+		parseErrs := make(chan error, 1)
 
 		go func() {
-			for err := range errs {
+			for err := range parseErrs {
 				log.Println(fmt.Errorf("parse: %w", err))
 			}
 		}()
 
-		r, err := repos.Parse(input, errs)
+		r, err := repos.Parse(input, parseErrs)
 		if err != nil {
 			return fmt.Errorf("sync: %w", err)
 		}
 
-		errs = make(chan error, 1)
+		syncErrs := make(chan error, 1)
 
 		go func() {
-			for err := range errs {
+			for err := range syncErrs {
 				log.Println(fmt.Errorf("sync: %w", err))
 			}
 		}()
 
-		err = repos.Sync(context.TODO(), r, errs)
-		if err != nil {
+		if err := repos.Sync(context.TODO(), r, syncErrs); err != nil {
 			return fmt.Errorf("sync: %w", err)
 		}
 
