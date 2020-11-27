@@ -2,6 +2,7 @@ package repos
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 
@@ -26,10 +27,10 @@ func Sync(ctx context.Context, repos []Repo, errCh chan error) error {
 
 	for _, r := range repos {
 		if ctx.Err() != nil {
-			switch ctx.Err() {
-			case context.Canceled:
+			switch {
+			case errors.Is(ctx.Err(), context.Canceled):
 				return errs.ErrContextCanceled
-			case context.DeadlineExceeded:
+			case errors.Is(ctx.Err(), context.DeadlineExceeded):
 				return errs.ErrContextTimeout
 			default:
 				return fmt.Errorf("context error: %w", ctx.Err())

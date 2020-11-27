@@ -91,7 +91,6 @@ func UpStatus(ctx context.Context, path string) (UpstreamStatus, error) {
 
 	output, err := Out(ctx, "-C", path, "rev-list",
 		"--left-right", "@{upstream}...HEAD")
-
 	if err != nil {
 		return status, err
 	}

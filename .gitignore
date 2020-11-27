@@ -1,4 +1,32 @@
-**/.DS_Store
 dist/
 out/
+
+# Go
+*.dll
+*.dylib
+*.exe
+*.exe~
+*.out
+*.so
+*.test
+vendor/
+
+# editors
+*.sw[a-p]
+*~
+.netrwhist
+.vscode/*
+
+# patches
 *.orig
+*.rej
+
+# OS Generated files
+.DS_Store
+.DS_Store?
+.Spotlight-V100
+.Trashes
+._*
+Icon
+Thumbs.db
+ehthumbs.db

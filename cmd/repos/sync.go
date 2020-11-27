@@ -46,7 +46,6 @@ from a file with the -f/--file flag.
 			input = os.Stdin
 		} else {
 			f, err := os.Open(SyncFile)
-
 			if err != nil {
 				return fmt.Errorf("sync: failed to open repos file: %w", err)
 			}

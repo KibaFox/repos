@@ -1,42 +1,72 @@
 run:
+  concurrency: 4
+  deadline: 5m
+  timeout: 5m
   tests: true
 
 linters:
+  disable-all: true
   enable:
-    - govet
-    - errcheck
-    - staticcheck
-    - unused
-    - gosimple
-    - structcheck
-    - varcheck
-    - ineffassign
-    - typecheck
+    - asciicheck
     - deadcode
-    - golint
-    - gosec
-    - interfacer
-    - unconvert
+    - dupl
+    - errcheck
+    - errorlint
+    - exhaustive
+    - exportloopref
+    - gocognit
     - goconst
-    - gocyclo
+    - gocritic
+    - godot
+    - godox
+    - goerr113
     - gofmt
+    - gofumpt
+    - goimports
+    - golint
+    - goprintffuncname
+    - gosec
+    - gosimple
+    - govet
+    - ineffassign
+    - interfacer
+    - lll
     - maligned
     - misspell
-    - lll
-    - unparam
+    - nakedret
+    - nestif
+    - nolintlint
     - prealloc
     - scopelint
-    - gocritic
-    - gochecknoinits
-    - gochecknoglobals
-    - godox
+    - staticcheck
+    - structcheck
+    - stylecheck
+    - testpackage
+    - tparallel
+    - typecheck
+    - unconvert
+    - unparam
+    - unused
+    - varcheck
     - whitespace
+    - wrapcheck
     - wsl
-  enable-all: false
+
+  ## Do not enable:
+  # - bodyclose     # not using net/http
+  # - funlen        # duplicates gocognit
+  # - gci
+  # - gochecknoglobals
+  # - gochecknoinits
+  # - gocyclo       # duplicates gocognit
+  # - gomnd
+  # - nlreturn      # duplicates wsl
+  # - noctx         # not using net/http
+  # - paralleltest
+  # - rowserrcheck  # not using sql
+  # - sqlclosecheck # not using sql
 
 linters-settings:
-  gocyclo:
-    min-complexity: 12
   govet:
     check-shadowing: true
   misspell:
@@ -44,3 +74,17 @@ linters-settings:
   lll:
     line-length: 80
     tab-width: 4
+
+issues:
+  exclude-rules:
+    # Magefiles will mistakenly report unused and deadcode.
+    - path: magefile\.go
+      linters:
+        - deadcode
+        - unused
+    # Tests can be more relaxed.
+    - path: _test\.go
+      linters:
+        - dupl
+        - goconst
+        - gosec

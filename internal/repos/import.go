@@ -2,6 +2,7 @@ package repos
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -38,10 +39,10 @@ func FromPath(
 	if err := filepath.Walk(exPath,
 		func(p string, info os.FileInfo, e error) error {
 			if ctx.Err() != nil {
-				switch ctx.Err() {
-				case context.Canceled:
+				switch {
+				case errors.Is(ctx.Err(), context.Canceled):
 					return errs.ErrContextCanceled
-				case context.DeadlineExceeded:
+				case errors.Is(ctx.Err(), context.DeadlineExceeded):
 					return errs.ErrContextTimeout
 				default:
 					return fmt.Errorf("context error: %w", ctx.Err())
